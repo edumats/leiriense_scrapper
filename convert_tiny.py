@@ -139,7 +139,7 @@ def convert_file(input_path: Path, output_path: Path) -> None:
         out["Observações"] = ""
         out["Situação"] = "Ativo"
         out["Estoque"] = row.get("saldo_estoque", "")
-        out["Preço de custo"] = row.get("preco", "")
+        out["Preço de custo"] = row.get("preco_com_tributos", "")
         out["Cód do Fornecedor"] = row.get("codigo", "")
         out["Fornecedor"] = "CICLO LEIRIENSE PECAS E ACESSORIOS PARA BICICLETAS LTDA"
         out["Localização"] = ""
