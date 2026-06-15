@@ -15,14 +15,19 @@ CATEGORIES = {
     '3183664', '1023700', '3457632', '998308', '2280038'
 }
 
+# Original URL
+# https://app.mercos.com/api_b2b/v1/produtos?representada=413939&categoria=3180345&comprados_recentemente=false&ordenar_por=1
+
 
 def main():
     url = "https://app.mercos.com/api_b2b/v1/produtos"
 
     headers = {
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
         "Referer": "https://cicloleiriense.meuspedidos.com.br/",
-        "Origin": "https://cicloleiriense.meuspedidos.com.br"
+        "Origin": "https://cicloleiriense.meuspedidos.com.br",
+        "Authorization": "Bearer d7191eaa-6698-47b6-ab84-b20508c022ac",
+        "Accept": "application/json, text/plain, */*",
     }
 
     all_rows: List[Dict[str, Any]] = []
@@ -35,7 +40,7 @@ def main():
                 "categoria": categoria,
                 "comprados_recentemente": "false",
                 "ordenar_por": "1",
-                "token": "24cf50cc-5992-4250-8fc6-b01f759318f1",
+                
                 "pagina": str(page),
             }
 
