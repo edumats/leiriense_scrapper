@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 import pandas as pd
 import sys
+from openpyxl import load_workbook
 
 # add parent directory to path so we can import convert_tiny
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -207,6 +208,36 @@ class TestConvertFile(unittest.TestCase):
         result_df = pd.read_excel(output_path)
         self.assertEqual(len(result_df), 3)
         self.assertEqual(list(result_df["Código (SKU)"]), ["LEIRI1", "LEIRI2", "LEIRI3"])
+
+    def test_codigo_float_values_are_written_as_text(self):
+        """Integral float codes should not keep the .0 suffix in text fields."""
+        input_path = Path(self.test_dir) / "input.xlsx"
+        data = {
+            "codigo": [15.0],
+            "nome": ["Product"],
+            "unidade": ["UN"],
+            "saldo_estoque": [5],
+            "preco": [50],
+            "informacoes_adicionais": [""],
+            "imagens": ["[]"],
+            "categorias": ["[]"],
+        }
+        df = pd.DataFrame(data)
+        df.to_excel(input_path, index=False)
+
+        output_path = Path(self.test_dir) / "output.xlsx"
+        convert_file(input_path, output_path)
+
+        wb = load_workbook(output_path)
+        ws = wb.active
+        headers = [cell.value for cell in ws[1]]
+        sku_col = headers.index("Código (SKU)") + 1
+        supplier_col = headers.index("Cód do Fornecedor") + 1
+
+        self.assertEqual(ws.cell(row=2, column=sku_col).value, "LEIRI15")
+        self.assertEqual(ws.cell(row=2, column=sku_col).number_format, "@")
+        self.assertEqual(ws.cell(row=2, column=supplier_col).value, "15")
+        self.assertEqual(ws.cell(row=2, column=supplier_col).number_format, "@")
 
     def test_output_has_all_headers(self):
         """Test that output file contains all required headers."""

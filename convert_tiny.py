@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from openpyxl import load_workbook
 
 
 def _parse_imagens(val) -> list[str]:
@@ -90,6 +91,42 @@ def _parse_marca(categorias_val: str) -> str:
     return ""
 
 
+def _format_codigo(val: Any) -> str:
+    if pd.isna(val):
+        return ""
+
+    if isinstance(val, float) and val.is_integer():
+        return str(int(val))
+
+    codigo = str(val).strip()
+    if codigo.endswith(".0") and codigo[:-2].isdigit():
+        return codigo[:-2]
+
+    return codigo
+
+
+def _first_present(row, *columns: str) -> Any:
+    for column in columns:
+        value = row.get(column, "")
+        if not pd.isna(value) and value != "":
+            return value
+    return ""
+
+
+def _format_text_columns(output_path: Path, headers: list[str]) -> None:
+    text_columns = {"Código (SKU)", "Cód do Fornecedor"}
+    wb = load_workbook(output_path)
+    ws = wb.active
+
+    for col_idx, header in enumerate(headers, start=1):
+        if header not in text_columns:
+            continue
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=col_idx).number_format = "@"
+
+    wb.save(output_path)
+
+
 def convert_file(input_path: Path, output_path: Path) -> None:
     # read input workbook (first sheet assumed)
     df = pd.read_excel(input_path)
@@ -126,7 +163,7 @@ def convert_file(input_path: Path, output_path: Path) -> None:
         out: dict[str, Any] = {h: "" for h in out_headers}
 
         out["ID"] = ""
-        codigo = str(row.get("codigo", ""))
+        codigo = _format_codigo(row.get("codigo", ""))
         out["Código (SKU)"] = "LEIRI" + codigo
         out["Descrição"] = row.get("nome", "")
         out["Unidade"] = row.get("unidade", "")
@@ -139,8 +176,8 @@ def convert_file(input_path: Path, output_path: Path) -> None:
         out["Observações"] = ""
         out["Situação"] = "Ativo"
         out["Estoque"] = row.get("saldo_estoque", "")
-        out["Preço de custo"] = row.get("preco_com_tributos", "")
-        out["Cód do Fornecedor"] = row.get("codigo", "")
+        out["Preço de custo"] = _first_present(row, "preco_com_tributos", "preco")
+        out["Cód do Fornecedor"] = codigo
         out["Fornecedor"] = "CICLO LEIRIENSE PECAS E ACESSORIOS PARA BICICLETAS LTDA"
         out["Localização"] = ""
         out["Estoque máximo"] = 0
@@ -189,6 +226,7 @@ def convert_file(input_path: Path, output_path: Path) -> None:
     # create DataFrame and write to Excel
     out_df = pd.DataFrame(out_rows, columns=out_headers)
     out_df.to_excel(output_path, index=False)
+    _format_text_columns(output_path, out_headers)
 
 
 def main():
