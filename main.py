@@ -1,4 +1,5 @@
 import argparse
+import json
 import requests
 import time
 from pathlib import Path
@@ -22,6 +23,7 @@ LOGIN_URL = f"{SITE_URL}entrar"
 DEFAULT_REQUEST_DELAY_SECONDS = 1.5
 SAVED_CATEGORIES_PATH = Path("category_ids.csv")
 DEFAULT_OUTPUT_PATH = Path("output.xlsx")
+PRODUCTS_URL = f"{SITE_URL}api_b2b/v1/produtos"
 
 # Original URL
 # https://app.mercos.com/api_b2b/v1/produtos?representada=413939&categoria=3180345&comprados_recentemente=false&ordenar_por=1
@@ -122,10 +124,14 @@ def wait_for_categories(driver: webdriver.Chrome, timeout: int = 20) -> Set[str]
     return set()
 
 
-def login_and_load_categories() -> Tuple[str, Set[str]]:
+def login_and_load_categories(
+    load_categories: bool = True,
+    verbose: bool = True,
+) -> Tuple[str, Set[str]]:
     username, password = load_credentials()
 
-    print("logging in...")
+    if verbose:
+        print("logging in...")
     driver = create_driver()
     try:
         driver.get(LOGIN_URL)
@@ -169,16 +175,22 @@ def login_and_load_categories() -> Tuple[str, Set[str]]:
             password_input.send_keys(Keys.ENTER)
 
         token = wait_for_auth_token(driver)
-        print("login succeeded")
+        if verbose:
+            print("login succeeded")
 
-        print("loading categories...")
+        if not load_categories:
+            return token, set()
+
+        if verbose:
+            print("loading categories...")
         driver.get(SITE_URL)
         WebDriverWait(driver, 20).until(
             lambda loaded_driver: loaded_driver.execute_script("return document.readyState")
             == "complete"
         )
         categories = wait_for_categories(driver)
-        print(f"found {len(categories)} categories")
+        if verbose:
+            print(f"found {len(categories)} categories")
 
         return token, categories
     finally:
@@ -191,7 +203,39 @@ def normalize_output_path(output_path: Path) -> Path:
     return output_path.with_suffix(".xlsx")
 
 
-def parse_args() -> argparse.Namespace:
+def build_headers(token: str) -> Dict[str, str]:
+    return {
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,pt-BR;q=0.9,ja;q=0.8,en;q=0.7",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
+        "Referer": SITE_URL,
+        "Origin": SITE_URL.rstrip("/"),
+        "Accept": "application/json, text/plain, */*",
+        "Authorization": f"Bearer {token}",
+        "Cookie": f"auth_token={token}",
+    }
+
+
+def fetch_auth_token() -> str:
+    token, _ = login_and_load_categories(load_categories=False, verbose=False)
+    return token
+
+
+def fetch_single_product(product_id: int) -> Dict[str, Any]:
+    token, _ = login_and_load_categories(load_categories=False)
+    url = f"{PRODUCTS_URL}/{product_id}"
+    print(f"fetching product {product_id}...")
+    response = requests.get(url, headers=build_headers(token), timeout=30)
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"product request failed with HTTP {response.status_code}: {response.text}"
+        )
+
+    return response.json()
+
+
+def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scrape Leiriense products")
     parser.add_argument(
         "-o",
@@ -200,29 +244,28 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_PATH,
         help=f"output XLSX file path (default: {DEFAULT_OUTPUT_PATH})",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--product-id",
+        type=int,
+        help="fetch one product by ID and print its JSON response",
+    )
+    parser.add_argument(
+        "--token",
+        action="store_true",
+        help="log in and print only the auth token without making API requests",
+    )
+    return parser.parse_args(argv)
 
 
 def main(output_path: Path = DEFAULT_OUTPUT_PATH):
-    url = "https://cicloleiriense.meuspedidos.com.br/api_b2b/v1/produtos"
     output_path = normalize_output_path(output_path)
-
-    headers = {
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,pt-BR;q=0.9,ja;q=0.8,en;q=0.7",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
-        "Referer": "https://cicloleiriense.meuspedidos.com.br/",
-        "Origin": "https://cicloleiriense.meuspedidos.com.br",
-        "Accept": "application/json, text/plain, */*",
-    }
 
     all_rows: List[Dict[str, Any]] = []
     request_delay = load_request_delay()
     token, discovered_categories = login_and_load_categories()
     saved_categories = load_saved_categories()
     categories = discovered_categories | saved_categories
-    headers["Authorization"] = f"Bearer {token}"
-    headers["Cookie"] = f"auth_token={token}"
+    headers = build_headers(token)
 
     if not categories:
         print("no categories found")
@@ -256,7 +299,7 @@ def main(output_path: Path = DEFAULT_OUTPUT_PATH):
                 time.sleep(request_delay)
 
             print(f"[{category_idx}/{len(sorted_categories)}] category {categoria}: fetching page {page}")
-            resp = requests.get(url, params=params, headers=headers)
+            resp = requests.get(PRODUCTS_URL, params=params, headers=headers)
             requests_made += 1
             if resp.status_code != 200:
                 print(
@@ -306,4 +349,10 @@ def main(output_path: Path = DEFAULT_OUTPUT_PATH):
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args.output)
+    if args.token:
+        print(fetch_auth_token())
+    elif args.product_id is not None:
+        product = fetch_single_product(args.product_id)
+        print(json.dumps(product, ensure_ascii=False, indent=2))
+    else:
+        main(args.output)

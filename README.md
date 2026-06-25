@@ -56,6 +56,26 @@ python main.py -o output_full
 
 If the output path has no extension, `.xlsx` is added automatically.
 
+Fetch one authenticated product by its ID and print the API response as JSON:
+
+```bash
+python main.py --product-id 123456
+```
+
+Single-product mode calls
+`https://cicloleiriense.meuspedidos.com.br/api_b2b/v1/produtos/<product_id>`.
+It logs in using `.env` as usual, but skips category discovery and does not
+create an Excel file.
+
+Print only the authenticated token:
+
+```bash
+python main.py --token
+```
+
+Token mode logs in using `.env`, prints only the raw `auth_token` value, skips
+category discovery, and does not make product API requests.
+
 The scraper prints progress while it runs:
 
 - login status
